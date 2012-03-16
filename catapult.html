@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html>
+<!--
+Catapult Simulator - a JS implementation of a catapult simulation
+
+Copyright (c) 2012 Mark Charlebois
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+-->
+<head>
+<meta http-equiv="X-UA_Compatible" content="IE-Edge"/>
+<!--<script src="html5slider.js">-->
+</script>
+<script>
+var STATE_IDLE=0
+var STATE_RELEASE=1
+var STATE_FLY=2
+var state=STATE_IDLE
+var t=0;
+var xvelocity=0;
+var yvelocity=0;
+var x0=0;
+var y0=0;
+var m2px=750/7.0;
+var power0=0;
+var delta_t=0.02;
+var updatetime=50;
+var tid;
+
+function init() {
+  draw();
+}
+
+function dirty() { 
+  setTimeout(draw,updatetime);
+}
+
+function drawTarget(ctx, target) {
+  ctx.save();
+  ctx.translate(m2px*target,0);
+  ctx.fillStyle = 'rgb(51,204,255)'; 
+  ctx.fillRect(0,0,3,-60)
+  ctx.fillStyle = 'rgb(250,0,0)'; 
+  ctx.save();
+  ctx.translate(3,-60);
+  ctx.beginPath();  
+  ctx.moveTo(0,0);
+  ctx.lineTo(20,5);
+  ctx.lineTo(0,10);
+  ctx.lineTo(0,0);
+  ctx.fill();  
+  ctx.restore();
+  ctx.font = '12px san-serif';
+  ctx.textBaseline = 'bottom';
+  ctx.fillStyle = 'rgb(0,0,0)'; 
+  ctx.fillText(target+'m', 0, 40);
+  ctx.restore();
+}
+
+function drawCatapult(ctx, power,offset) {
+  var alpha = -8.0/3.0;
+  ctx.font = '12px san-serif';
+  ctx.textBaseline = 'bottom';
+  ctx.save();
+  ctx.translate(-offset*m2px/10.0,0);  
+  ctx.save();
+  ctx.fillStyle = 'rgb(51,204,255)'; 
+  ctx.rotate(Math.PI*2/(alpha)-Math.PI*power/(4.0*20));
+  ctx.fillRect(0,0,m2px*0.625+5,5);
+  if (state != STATE_FLY) {
+    ctx.fillStyle = 'rgb(0,255,0)'; 
+    ctx.beginPath();  
+    ctx.arc(m2px*0.625,10,5,0,Math.PI*2,true);  
+    ctx.fill();  
+    ctx.closePath();
+  }
+  ctx.beginPath();  
+  ctx.fillStyle = 'rgb(0,4,255)'; 
+  ctx.arc(m2px*0.625,10,5,0,Math.PI,true);  
+  ctx.fill();  
+  ctx.closePath();
+  ctx.restore();  
+  ctx.fillStyle = 'rgb(51,204,255)'; 
+  ctx.fillRect(-30,0,30,-10);
+  ctx.fillRect(-30,0,10,-40);
+  if (state == STATE_IDLE) {
+    ctx.fillStyle = 'rgb(0,0,0)'; 
+    ctx.fillText(-offset/10.0+"m", -30, 40);
+  }
+  ctx.restore();  
+  ctx.fillStyle = 'rgb(0,0,0)'; 
+  ctx.fillText("Power: "+power, 50, 40);
+}
+
+function drawBall(ctx) {
+  var xpos=x0+xvelocity*t;
+  var ypos=y0+yvelocity*t+m2px*9.81*t*t
+  ctx.fillStyle = 'rgb(0,255,0)'; 
+  ctx.beginPath();  
+  ctx.arc(xpos,ypos,5,0,Math.PI*2,true);  
+  ctx.fill();  
+  ctx.closePath();
+  if (ypos > 0) {
+    state=STATE_IDLE;
+  }
+}
+
+function draw() {
+  var power;
+  if (state == STATE_IDLE) 
+    power = document.getElementById('sliderPower').value;
+  else if (state == STATE_RELEASE) {
+    t=t+delta_t;
+    power=power0-3000*t*t;
+    if (power < 0) {
+      power=0;
+    }
+  }
+  else {
+    t=t+delta_t;
+    power=0;
+  }
+  var canvas = document.getElementById('mycanvas');  
+  var ctx = canvas.getContext("2d");  
+  var showtrail=document.getElementById('showtrail').checked;
+  if (state != STATE_FLY || !showtrail) {
+    var target = document.getElementById('sliderTarget').value;
+    var offset = document.getElementById('sliderOffset').value;
+    ctx.clearRect(0,0,1000,350); // clear canvas
+    ctx.font = '24px san-serif';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('Los Penasquitos Academy', 0, 40);
+    ctx.fillText('Catapult Simulator', 0, 80);
+    ctx.save();
+    ctx.translate(200,300);  
+    ctx.fillStyle = 'rgb(51,51,20)'; 
+    ctx.fillRect(-200,0,1000,10);
+    ctx.fillStyle = 'rgb(255,255,255)'; 
+    ctx.fillRect(0,0,2,10);
+    drawCatapult(ctx, power, offset);
+    drawTarget(ctx, target);
+    ctx.restore();  
+  }
+  if (state == STATE_FLY) {
+    ctx.save();
+    ctx.translate(200,300);  
+    drawBall(ctx)
+    ctx.restore();  
+    if (state == STATE_IDLE) {
+      clearInterval(tid);
+    }
+  }
+  if (state == STATE_RELEASE && power == 0) {
+     t=0;
+     state=STATE_FLY;
+  }
+}
+
+function go() {
+  state=STATE_RELEASE;
+  var offset=document.getElementById('sliderOffset').value;
+  power0=document.getElementById('sliderPower').value;
+  xvelocity=power0*65*Math.sin(Math.PI/4);
+  yvelocity=-power0*65*Math.cos(Math.PI/4);
+  x0=-offset*m2px/10.0+Math.sin(-Math.PI/4)*m2px*0.625+Math.sin(Math.PI/4)*15;
+  y0=-Math.cos(-Math.PI/4)*m2px*0.625-Math.cos(Math.PI/4)*15;
+  t=0;
+  clearInterval(tid);
+  tid = setInterval(draw,updatetime);
+}
+</script>
+<style>
+td.spacer { width: 30; }
+</style>
+</head>
+<body onload="init();">
+    <div>
+      <canvas id="mycanvas" width="1000" height="350"></canvas>
+    </div>
+    <table>
+    <tr>
+<td>Offset</td><td><input type="range" id="sliderOffset" min="0" max="10" step="1" onchange="dirty(event)" value="0"/></td><td class="spacer"/>
+<td>Power</td><td><input type="range" id="sliderPower" min="0" max="20" step="1" onchange="dirty(event)" value="0"/></td><td class="spacer"/>
+<td id="power"</td><td>Target Position</td><td><input type="range" id="sliderTarget" min="2" max="7" step="0.25" onchange="dirty(event)" value="2"/><td id="target"</td><td class="spacer"/>
+<td><input type="checkbox" id="showtrail">Show Trajectory</td>
+<td class="spacer"/>
+<td><button onClick="go();">Launch</button></td>
+</tr>
+    </table>
+    <p>&nbsp;</p>
+    <p>Note: This simulator works in Chrome, Firefox 5+, or Safari. It is known to only partially work in IE9 (no slider controls) and not at all in previous versions of IE (no canvas support)</p>
+  </body>
+</html>
+
