@@ -29,7 +29,7 @@ THE SOFTWARE.
 </script>
 <script>
 var STATE_IDLE=0
-var STATE_RELEASE=1
+var STATE_ACCEL=1
 var STATE_FLY=2
 var state=STATE_IDLE
 var t=0;
@@ -38,11 +38,24 @@ var yvelocity=0;
 var x0=0;
 var y0=0;
 var m2px=750/7.0;
-var armlen=0.625;
-var power0=0;
+var armlen=0;
+var power=0;
 var delta_t=0.02;
+var delta=0;
 var updatetime=50;
+var theta_0 = -Math.PI*2/(8.0/3.0);
 var tid;
+
+
+// angular displacement
+function theta(t, theta0, alpha) {
+	return theta0 +alpha*t*t/2;
+}
+
+// Angular acceleration
+function alpha(delta) {
+	return (80.0/0.05)*delta*armlen/2;
+}
 
 function init() {
   draw();
@@ -74,16 +87,14 @@ function drawTarget(ctx, target) {
   ctx.restore();
 }
 
-function drawCatapult(ctx, power,offset) {
-  var alpha = -8.0/3.0;
-  armlen=document.getElementById('sliderArmLen').value/1000.0;
+function drawCatapult(ctx, theta, offset) {
   ctx.font = '12px san-serif';
   ctx.textBaseline = 'bottom';
   ctx.save();
   ctx.translate(-offset*m2px/10.0,0);  
   ctx.save();
   ctx.fillStyle = 'rgb(51,204,255)'; 
-  ctx.rotate(Math.PI*2/(alpha)-Math.PI*power/(4.0*20));
+  ctx.rotate(theta);
   ctx.fillRect(0,0,m2px*armlen+5,5);
   if (state != STATE_FLY) {
     ctx.fillStyle = 'rgb(0,255,0)'; 
@@ -101,42 +112,50 @@ function drawCatapult(ctx, power,offset) {
   ctx.fillStyle = 'rgb(51,204,255)'; 
   ctx.fillRect(-30,0,30,-10);
   ctx.fillRect(-30,0,10,-40);
-  if (state == STATE_IDLE) {
-    ctx.fillStyle = 'rgb(0,0,0)'; 
-    ctx.fillText(-offset/10.0+"m", -30, 40);
-  }
   ctx.restore();  
   ctx.fillStyle = 'rgb(0,0,0)'; 
+  ctx.fillText("Arm len: "+armlen+"m, Offset: "+(-offset/10.0)+"m", -180, 40);
   ctx.fillText("Power: "+power, 50, 40);
 }
 
 function drawBall(ctx) {
   var xpos=x0+xvelocity*t;
   var ypos=y0+yvelocity*t+m2px*9.81*t*t
+  if (ypos > 0) {
+    var a=m2px*9.81;
+    var b=yvelocity;
+    var c=y0;
+    t=(-b+Math.sqrt(b*b-4*a*c))/(2*a);
+    state=STATE_IDLE;
+    xpos=x0+xvelocity*t;
+    ypos=y0+yvelocity*t+m2px*9.81*t*t
+  }
   ctx.fillStyle = 'rgb(0,255,0)'; 
   ctx.beginPath();  
   ctx.arc(xpos,ypos,5,0,Math.PI*2,true);  
   ctx.fill();  
   ctx.closePath();
-  if (ypos > 0) {
-    state=STATE_IDLE;
-  }
 }
 
 function draw() {
-  var power;
-  if (state == STATE_IDLE) 
+  var theta_t;
+  if (state == STATE_IDLE) {
     power = document.getElementById('sliderPower').value;
-  else if (state == STATE_RELEASE) {
+    delta=-Math.PI*2*power/(8*30);
+    armlen=document.getElementById('sliderArmLen').value/1000.0;
+    theta_t = theta_0+delta;
+  }
+  else if (state == STATE_ACCEL) {
     t=t+delta_t;
-    power=power0-3000*t*t;
-    if (power < 0) {
-      power=0;
+    var alpha_t=alpha(-delta);
+    theta_t=theta(t, theta_0+delta, alpha_t);
+    if (theta_t >= theta_0) {
+      theta_t=theta_0;
     }
   }
   else {
     t=t+delta_t;
-    power=0;
+    theta_t=theta_0;
   }
   var canvas = document.getElementById('mycanvas');  
   var ctx = canvas.getContext("2d");  
@@ -155,7 +174,7 @@ function draw() {
     ctx.fillRect(-200,0,1000,10);
     ctx.fillStyle = 'rgb(255,255,255)'; 
     ctx.fillRect(0,0,2,10);
-    drawCatapult(ctx, power, offset);
+    drawCatapult(ctx, theta_t, offset);
     drawTarget(ctx, target);
     ctx.restore();  
   }
@@ -168,18 +187,25 @@ function draw() {
       clearInterval(tid);
     }
   }
-  if (state == STATE_RELEASE && power == 0) {
-     t=0;
-     state=STATE_FLY;
+  if (state == STATE_ACCEL && theta_t >= theta_0) {
+    // Calculate the release velocity
+    // Simplify by using constant acceleration from spring
+    var alpha_t=alpha(-delta);
+    var Vt=alpha_t*Math.sqrt(2*-delta/alpha_t)*armlen;
+    var beta=Math.PI+theta_0;
+    var phi=Math.PI/2-beta;
+    xvelocity=Vt*Math.cos(phi)*m2px;
+    yvelocity=-Vt*Math.sin(phi)*m2px;
+    t=0;
+    state=STATE_FLY;
   }
 }
 
 function go() {
-  state=STATE_RELEASE;
+  state=STATE_ACCEL;
   var offset=document.getElementById('sliderOffset').value;
-  power0=document.getElementById('sliderPower').value;
-  xvelocity=power0*65*Math.sin(Math.PI/4);
-  yvelocity=-power0*65*Math.cos(Math.PI/4);
+  power=document.getElementById('sliderPower').value;
+  delta=-Math.PI*2*power/(8*30);
   x0=-offset*m2px/10.0+Math.sin(-Math.PI/4)*m2px*armlen+Math.sin(Math.PI/4)*15;
   y0=-Math.cos(-Math.PI/4)*m2px*armlen-Math.cos(Math.PI/4)*15;
   t=0;
@@ -198,13 +224,13 @@ td.spacer { width: 30px; }
     <table>
     <tr>
 <td>Offset</td><td><input type="range" id="sliderOffset" min="0" max="10" step="1" onchange="dirty(event)" value="0"/></td><td class="spacer"/>
-<td>Power</td><td><input type="range" id="sliderPower" min="0" max="20" step="1" onchange="dirty(event)" value="0"/></td><td class="spacer"/>
+<td>Power</td><td><input type="range" id="sliderPower" min="0" max="30" step="1" onchange="dirty(event)" value="0"/></td><td class="spacer"/>
 <td id="power"</td><td>Target Position</td><td><input type="range" id="sliderTarget" min="2" max="7" step="0.25" onchange="dirty(event)" value="2"/><td id="target"</td><td class="spacer"/>
 <td><input type="checkbox" id="showtrail">Show Trajectory</td>
 <td class="spacer"/>
 <td><button onClick="go();">Launch</button></td>
 </tr>
-<tr><td>Arm length</td><td><input type="range" id="sliderArmLen" min="400" max="625" step="25" onchange="dirty(event)" value="0"/></td><td class="spacer"/></tr>
+<tr><td>Arm length</td><td><input type="range" id="sliderArmLen" min="425" max="625" step="10" onchange="dirty(event)" value="625"/></td><td class="spacer"/></tr>
     </table>
     <p>&nbsp;</p>
     <p>Note: This simulator works in Chrome, Firefox 5+, or Safari. It is known to only partially work in IE9 (no slider controls) and not at all in previous versions of IE (no canvas support)</p>
